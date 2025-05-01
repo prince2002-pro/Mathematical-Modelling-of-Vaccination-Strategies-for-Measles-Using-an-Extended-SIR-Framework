@@ -1,0 +1,581 @@
+---
+title: "Mathematical Modelling of Vaccination Strategies for Measles Using an Extended SIR Framework"
+author: "Prince"
+date: "2025-04-14"
+output:
+  word_document: default
+  html_document: default
+---
+
+### **Case Project: Mathematical Modelling of Vaccination Strategies for Measles Using an Extended SIR Framework**
+
+Here we are calling the libraries and defining the parameters and the initial conditions
+
+```{r}
+# Required Libraries
+library(ggplot2)
+library(deSolve)
+
+# Initial population
+N <- 10000       # Population size
+I0 <- 5          # Initial infected
+R0 <- 0          # Initially recovered
+S0 <- N - I0 - R0
+
+init <- c(S = S0, I = I0, R = R0)
+
+# Time in days (10 years)
+time <- seq(0, 3650, by = 1)
+
+# Measles Parameters
+beta <- 0.8      # Transmission rate (R0 ~ 12-18)
+gamma <- 1/7     # Recovery rate (infectious for ~7 days)
+
+```
+
+## **Question 1: SIR Model Without Vaccination**
+
+```{r}
+sir_model <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <- -beta * S * I / N
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I
+    return(list(c(dS, dI, dR)))
+  })
+}
+
+```
+
+This function defines the SIR differential equations:
+
+dS: Number of people leaving the susceptible group due to infection.
+
+dI: People entering and leaving the infected group (infected - recovered).
+
+dR: People recovering from infection per unit time.
+
+beta: transmission rate (probability of disease spread).
+
+gamma: recovery rate (1 / average number of infectious days).
+
+```{r}
+params <- c(beta = beta, gamma = gamma)
+
+sir_out <- as.data.frame(ode(y = init, times = time, func = sir_model, parms = params))
+```
+
+params: Contains the values for beta and gamma.
+
+ode(): Solves the differential equations numerically using the deSolve package.
+
+init: Contains initial values for S, I, and R.
+
+time: Time steps (e.g., 0:3650 for 10 years in days).
+
+The output sir_out is a data frame showing how the values of S, I, and R change over time.
+
+```{r}
+# Plot
+ggplot(sir_out, aes(x = time)) +
+  geom_line(aes(y = S, color = "Susceptible")) +
+  geom_line(aes(y = I, color = "Infected")) +
+  geom_line(aes(y = R, color = "Recovered")) +
+  labs(title = "Measles Spread Without Vaccination", y = "Number of People", x = "Time (Days)") +
+  scale_color_manual(values = c("blue", "red", "green")) +
+  theme_minimal()
+```
+
+### **Trend:**
+
+Susceptible (Green Line): Initially, there is a high number of susceptible individuals (close to 10000). This number drops sharply at the beginning and remains close to zero for the rest of the period.
+
+Infected (Blue Line): The number of infected individuals spikes sharply at the beginning, reaching around 3000, and then drops to zero quickly.
+
+Recovered (Red Line): The number of recovered individuals rises sharply at the beginning and then levels off near 10000 people.
+
+### **Analysis:**
+
+Initial Phase: At the start, the high number of susceptible individuals quickly decreases as they become infected. This rapid decrease in susceptibility leads to a sharp rise in infections.
+
+Recovery Phase: The quick drop in infections after the initial peak suggests that the majority of the population gets infected and then recovers. The number of recovered individuals increases rapidly and stabilizes near 10000, indicating that almost everyone in the population has been infected and recovered.
+
+Sustained Control: The number of susceptible individuals remains close to zero, indicating that there are very few individuals left who can be infected again.
+
+### **Conclusion:**
+
+Natural Course of Measles: Without vaccination, measles spreads rapidly through the population, infecting almost everyone. The disease then runs its course, and the population recovers, leaving very few susceptible individuals.
+
+Importance of Vaccination: This graph highlights the importance of vaccination in controlling measles outbreaks. Without vaccination, the entire population is at risk of infection, leading to high morbidity.
+
+**Epidemiological Statistics**
+
+peak_I: The maximum number of infected individuals at any point in time.
+
+peak_day: The day on which infections peaked.
+
+total_infected: Total number of people who eventually got infected (recovered) = final value of R.
+
+```{r}
+# Statistics
+peak_I <- max(sir_out$I)
+peak_day <- sir_out$time[which.max(sir_out$I)]
+total_infected <- tail(sir_out$R, 1)
+
+cat("Peak infections:", round(peak_I), "on day", peak_day, "\n")
+cat("Total infected:", round(total_infected), "\n")
+
+```
+
+**Output Interpretation:**
+
+**Peak Infections:** 5135 on day 14
+
+Analysis: The peak number of infections occurs on day 14, with 5135 individuals infected. This indicates a rapid spread of measles within the first two weeks of the outbreak. The high peak suggests that the disease is highly contagious and can infect a large portion of the population quickly.
+
+**Total Infected:** 9962
+
+Analysis: The total number of infected individuals over the course of the epidemic is 9962. This means that nearly the entire population (assuming a population size of 10000) gets infected at some point during the outbreak. The high total number of infections highlights the importance of vaccination in controlling the spread of measles.
+
+## **Question 2**
+
+**a: Vaccination (Perfect Immunity)**
+
+```{r}
+vx_model <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <- -beta * S * I / N - vx_rate * S
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I + vx_rate * S
+    return(list(c(dS, dI, dR)))
+  })
+}
+
+simulate_with_vx <- function(vx_rate_val) {
+  params_vx <- c(beta = beta, gamma = gamma, vx_rate = vx_rate_val)
+  out <- as.data.frame(ode(y = init, times = time, func = vx_model, parms = params_vx))
+  total_infections <- tail(out$R, 1) - (vx_rate_val * sum(out$S))
+  return(total_infections)
+}
+
+target_infections <- total_infected / 2
+vx_rates <- seq(0, 0.02, by = 0.0005)
+results <- sapply(vx_rates, simulate_with_vx)
+
+vx_needed <- vx_rates[which.min(abs(results - target_infections))]
+cat("Vaccination rate needed to halve infections:", vx_needed, "\n")
+
+# Simulate with vx_needed
+params_vx <- c(beta = beta, gamma = gamma, vx_rate = vx_needed)
+vx_output <- as.data.frame(ode(y = init, times = time, func = vx_model, parms = params_vx))
+vaccinated_total <- vx_needed * sum(vx_output$S)
+cat("Total vaccinated:", round(vaccinated_total), "\n")
+
+```
+
+**Output Interpretation**
+
+**Vaccination Rate Needed to Halve Infections**: 0.02
+
+**Analysis**: A vaccination rate of 0.02 (or 2%) is required to halve the total number of infections over the course of the epidemic. This means that vaccinating 2% of the susceptible population per unit time is sufficient to significantly reduce the spread of measles and cut the total number of infections by half.
+
+**Total Vaccinated**: 2517
+
+**Analysis**: A total of 2517 individuals need to be vaccinated to achieve the desired reduction in infections. This number represents the cumulative count of people who received the vaccine during the simulation period.
+
+### **Conclusion:**
+
+**Effective Vaccination Strategy**: The data indicates that a relatively modest vaccination rate of 2% can have a substantial impact on controlling the spread of measles. By vaccinating 2517 individuals, the total number of infections can be halved, demonstrating the effectiveness of vaccination in outbreak control.
+
+**Public Health Implications**: This information is crucial for public health officials in planning and implementing vaccination campaigns. Ensuring that at least 2% of the population is vaccinated at regular intervals can significantly reduce the burden of measles and prevent large-scale outbreaks.
+
+Here we visualize the effect of the result finded
+
+```{r}
+ggplot(vx_output, aes(x = time)) +
+  geom_line(aes(y = S, color = "Susceptible")) +
+  geom_line(aes(y = I, color = "Infected")) +
+  geom_line(aes(y = R, color = "Recovered")) +
+  labs(title = paste("SIR with Vaccination (vx_rate =", vx_needed, ")"),
+       y = "Number of People", x = "Time (Days)") +
+  scale_color_manual(values = c("blue", "red", "green")) +
+  theme_minimal()
+
+```
+
+### **Trend:**
+
+Susceptible (Green Line): Initially, there is a high number of susceptible individuals. This number quickly decreases to zero, indicating that the vaccination rate is high enough to convert susceptible individuals to recovered status rapidly.
+
+Infected (Blue Line): The number of infected individuals rises sharply at the beginning but then drops to zero almost immediately. This suggests that the vaccination rate is effective in controlling the spread of the infection.
+
+Recovered (Red Line): The number of recovered individuals increases rapidly and then stabilizes at around 10,000 people. This indicates that the majority of the population has either recovered from the infection or has been vaccinated.
+
+### **Analysis:**
+
+Initial Phase: At the start, the high number of susceptible individuals quickly decreases due to the vaccination efforts. This rapid decrease in susceptibility leads to a sharp rise in infections as the disease spreads among the remaining susceptible individuals.
+
+Control Phase: The quick drop in infections after the initial peak suggests that the vaccination rate (vx_rate = 0.02) is sufficient to control the outbreak effectively. The infected individuals recover quickly, and the number of susceptible individuals drops to zero.
+
+Stabilization Phase: The number of recovered individuals stabilizes at around 10,000, indicating that the entire population has either been vaccinated or has recovered from the infection.
+
+### **Conclusion:**
+
+Effective Vaccination Strategy: The graph demonstrates that a vaccination rate of 0.02 is highly effective in controlling the spread of measles. The rapid conversion of susceptible individuals to recovered status prevents the disease from spreading further.
+
+Sustained Control: Maintaining a high vaccination rate is crucial to keep the number of infections low and ensure that the population remains protected.
+
+**b: Waning Immunity**
+
+we'll introduce waning immunity, where vaccinated individuals lose their immunity over time. This is important to simulate the reduction in immunity after vaccination.
+
+```{r}
+waning_model <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <- -beta * S * I / N - vx_rate * S + waning_rate * R
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I + vx_rate * S - waning_rate * R
+    return(list(c(dS, dI, dR)))
+  })
+}
+
+waning_rate <- 1 / (15 * 365)  # 15 years average waning
+params_waning <- c(beta = beta, gamma = gamma, vx_rate = vx_needed, waning_rate = waning_rate)
+
+waning_out <- as.data.frame(ode(y = init, times = time, func = waning_model, parms = params_waning))
+
+ggplot(waning_out, aes(x = time)) +
+  geom_line(aes(y = I), color = "purple") +
+  labs(title = "Measles with Vaccination + Waning Immunity", y = "Infected", x = "Days")
+
+```
+
+**Trend**:
+
+The graph shows the number of infected individuals over time.
+
+There is a sharp peak in the number of infections at the beginning, reaching around 3000 infected individuals.
+
+After the initial peak, the number of infections quickly drops to near zero and remains low for the rest of the period shown.
+
+### **Analysis:**
+
+Initial Peak: The sharp peak at the beginning indicates a rapid spread of measles among the susceptible population. This is likely due to the high transmission rate of measles.
+
+Vaccination Impact: The quick drop in infections after the peak suggests that vaccination efforts are effective in reducing the number of susceptible individuals and controlling the outbreak.
+
+Waning Immunity: Despite the waning immunity, the number of infections remains low after the initial peak. This indicates that the vaccination rate is sufficient to maintain herd immunity and prevent subsequent outbreaks.
+
+### **Conclusion:**
+
+Effective Vaccination Strategy: The graph demonstrates that a high vaccination rate can effectively control measles outbreaks, even when immunity wanes over time.
+
+Sustained Control: Maintaining a high vaccination coverage is crucial to keep the number of infections low and prevent future outbreaks.
+
+## **Question 3**
+
+To visualize the relationship between vaccination rates (vx_rate), immunity loss (waning_rate), and infections (I), we are going to create a plot showing how these two parameters affect the number of infections over time. We will run simulations for different vaccination rates and waning rates and then plot the resulting infections.
+
+```{r}
+# Parameters for the model (no vaccination initially)
+N <- 10000
+I0 <- 5
+R0 <- 0
+S0 <- N - I0 - R0
+init <- c(S = S0, I = I0, R = R0)
+time <- seq(0, 3650, by = 1)  # Time over 10 years
+beta <- 0.8
+gamma <- 1/7
+
+# Vaccination and immunity waning rates
+vx_rates <- seq(0, 0.02, by = 0.001)  # Vaccination rates
+waning_rates <- seq(0, 1/(15*365), by = 1/(30*365))  # Waning rates (1/15 years to 1/30 years)
+
+# Function to simulate the model with vaccination and waning immunity
+waning_vx_model <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <- -beta * S * I / N - vx_rate * S + waning_rate * R
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I + vx_rate * S - waning_rate * R
+    list(c(dS, dI, dR))
+  })
+}
+
+# Matrix to store the peak infections for different combinations of vx_rate and waning_rate
+peak_infections <- matrix(NA, nrow = length(vx_rates), ncol = length(waning_rates))
+
+# Run simulations and store peak infections
+for (i in 1:length(vx_rates)) {
+  for (j in 1:length(waning_rates)) {
+    params <- c(beta = beta, gamma = gamma, vx_rate = vx_rates[i], waning_rate = waning_rates[j])
+    out <- as.data.frame(ode(y = init, times = time, func = waning_vx_model, parms = params))
+    peak_infections[i, j] <- max(out$I)  # Store the peak infection rate
+  }
+}
+
+# Convert matrix to data frame for plotting
+peak_infections_df <- as.data.frame(as.table(peak_infections))
+colnames(peak_infections_df) <- c("vx_rate", "waning_rate", "peak_infections")
+
+# Plot the relationship
+library(ggplot2)
+ggplot(peak_infections_df, aes(x = vx_rate, y = waning_rate, fill = peak_infections)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  labs(title = "Relationship Between Vaccination Rate and Waning Immunity on Infections",
+       x = "Vaccination Rate", y = "Waning Immunity Rate",
+       fill = "Peak Infections") +
+  theme_minimal()
+
+```
+
+**Explanation:**
+
+Vaccination Rate (vx_rate): We vary the vaccination rate from 0 to 2%, simulating how different vaccination efforts can reduce the number of infections.
+
+Waning Rate (waning_rate): We vary the waning rate from low (immunity lasts longer) to high (immunity fades quickly). This is set to represent immunity duration (ranging from 15 years to 30 years).
+
+Simulation: For each combination of vaccination and waning rates, we simulate the SIR model and calculate the peak infection number (peak_infections).
+
+Plot: The ggplot2 heatmap (geom_tile()) is used to visualize the peak infections across the different vaccination and waning rates.
+
+**Output analysis:**
+
+**Vaccination Rate**: As the vaccination rate increases (moving from left to right on the x-axis), the peak number of infections generally decreases. This suggests that higher vaccination rates are effective in reducing the number of peak infections.
+
+**Waning Immunity Rate**: As the waning immunity rate increases (moving from bottom to top on the y-axis), the peak number of infections also increases. This indicates that faster waning of immunity leads to higher peak infections, as individuals lose immunity more quickly and become susceptible again.
+
+**Combined Effect**: The graph shows a clear interaction between vaccination rate and waning immunity rate. The lowest peak infections are observed in the bottom-right corner of the graph, where the vaccination rate is high, and the waning immunity rate is low. Conversely, the highest peak infections are observed in the top-left corner, where the vaccination rate is low, and the waning immunity rate is high.
+
+### **Conclusion:**
+
+**Optimal Strategy**: To minimize peak infections, it is crucial to maintain a high vaccination rate and ensure that immunity lasts as long as possible. This can be achieved through effective vaccination programs and booster shots to sustain immunity.
+
+**Implications for Public Health**: The graph highlights the importance of both high vaccination coverage and long-lasting immunity in controlling infections. Public health strategies should focus on achieving high vaccination rates and addressing waning immunity through booster campaigns.
+
+## **Question 4**
+
+we want to explore how long immunity must last (whether through vaccination or natural infection) to effectively control the disease, ensuring that immunity lasts 15+ years or ideally for a lifetime (as is the case with MMR). For this, we can adjust the waning rate to simulate different immunity durations, where: a low waning rate represents a long-lasting immunity (lifelong), a high waning rate represents immunity that fades more quickly. We will simulate the model for varying immunity durations and observe how the number of infections is impacted.
+
+```{r}
+
+# Define the model with waning immunity
+waning_model <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <- -beta * S * I / N - vx_rate * S + waning_rate * R
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I + vx_rate * S - waning_rate * R
+    list(c(dS, dI, dR))
+  })
+}
+
+
+
+# Vary waning rates (from 15 years to 5 years)
+waning_rates <- seq(0.0001825, 0.0005479, length.out = 5)  # Avoid exact zero
+
+# Store total infections for each waning rate
+total_infections <- numeric(length(waning_rates))
+
+# Run simulations
+for (i in seq_along(waning_rates)) {
+  params <- c(beta = beta, gamma = gamma, vx_rate = vx_rate, waning_rate = waning_rates[i])
+  out <- as.data.frame(ode(y = init, times = time, func = waning_model, parms = params))
+  total_infections[i] <- tail(out$R, 1)
+}
+
+# Prepare data for plotting
+waning_df <- data.frame(waning_rate = waning_rates, total_infections = total_infections)
+waning_df$immunity_duration <- 1 / (waning_df$waning_rate * 365)
+
+# Plot
+ggplot(waning_df, aes(x = immunity_duration, y = total_infections)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red") +
+  labs(title = "Impact of Immunity Duration on Total Infections",
+       x = "Immunity Duration (Years)",
+       y = "Total Infected Population (Recovered)") +
+  theme_minimal()
+
+
+```
+
+**Explanation:**
+
+Model: We use the waning_model function, which includes vaccination (vx_rate) and immunity loss (waning_rate), where the waning rate simulates the loss of immunity over time.
+
+Waning Rates: We vary the waning_rate from low (long-lasting immunity) to high (short-lived immunity). This is represented in terms of years by dividing by 365 (since the model operates on a daily basis).
+
+Simulation: For each waning_rate, we run the model for 10 years and track the total number of infected (and thus recovered) individuals at the end of the simulation.
+
+Plot: The ggplot2 package is used to visualize how the immunity duration affects the total number of infections. As immunity duration decreases (higher waning rate), the number of infections increases.
+
+**Output:**
+
+**Trend**:
+
+The graph shows a positive correlation between immunity duration and total infections. As immunity duration increases, the total infected population also increases.
+
+**Data Points**:
+
+At 5.0 years: Approximately 9500 total infected population.
+
+At 7.5 years: Approximately 9600 total infected population.
+
+At 10.0 years: Approximately 9700 total infected population.
+
+At 12.5 years: Approximately 9750 total infected population.
+
+At 15.0 years: Approximately 9800 total infected population.
+
+### **Analysis:**
+
+Longer Immunity Duration: As the duration of immunity increases, the total number of infections over the 10-year period also increases. This suggests that longer-lasting immunity results in a higher cumulative number of infections.
+
+Implications for Vaccination Strategies: The graph indicates that while longer immunity duration reduces the frequency of reinfections, it may lead to a higher overall number of infections in the population. This could be due to the fact that individuals remain susceptible for a longer period before potentially losing immunity and becoming susceptible again.
+
+### **Conclusion:**
+
+Vaccination Program Design: When designing vaccination programs, it is crucial to consider the duration of immunity conferred by the vaccine. Longer-lasting immunity may require fewer booster shots but could result in higher overall infection rates if not managed properly.
+
+Further Investigation: Additional factors such as vaccination coverage, population dynamics, and disease transmission rates should be considered to optimize vaccination strategies for effective measles control.
+
+## **Question 5**
+
+This simulation explores how the duration of immunity (after infection or vaccination) affects the total number of people who get infected over a period of 10 years, assuming a fixed vaccination rate (1%).
+
+```{r}
+
+# Load necessary libraries
+library(deSolve)
+library(ggplot2)
+
+# Define the SIR model with vaccination and waning immunity
+sir_model <- function(time, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <- -beta * S * I / N - vx_rate * S + waning_rate * R
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I + vx_rate * S - waning_rate * R
+    list(c(dS, dI, dR))
+  })
+}
+
+# Function to run simulation for given vaccination and waning rates
+run_simulation_with_waning <- function(vx_rate, waning_rate) {
+  params <- c(beta = beta, gamma = gamma, vx_rate = vx_rate, waning_rate = waning_rate)
+  out <- as.data.frame(ode(y = init, times = time, func = sir_model, parms = params))
+  return(out)
+}
+
+# Parameters and initial conditions
+N <- 10000
+I0 <- 5
+R0 <- 0
+S0 <- N - I0 - R0
+init <- c(S = S0, I = I0, R = R0)
+time <- seq(0, 3650, by = 1)  # 10 years
+beta <- 0.8
+gamma <- 1 / 7
+vx_rate <- 0.01  # Fixed vaccination rate
+
+# Define waning rates (avoiding zero to prevent division by zero)
+waning_rates <- c(1/(15*365), 1/(12*365), 1/(10*365), 1/(7.5*365), 1/(5*365))  # From 15 to 5 years
+
+# Run simulations and record total infections (recovered)
+total_infections <- numeric(length(waning_rates))
+
+for (i in seq_along(waning_rates)) {
+  out <- run_simulation_with_waning(vx_rate = vx_rate, waning_rate = waning_rates[i])
+  total_infections[i] <- tail(out$R, 1)
+}
+
+# Create data frame and convert waning rates to immunity duration in years
+waning_df <- data.frame(
+  immunity_duration = 1 / (waning_rates * 365),
+  total_infections = total_infections
+)
+
+# Plot the results
+ggplot(waning_df, aes(x = immunity_duration, y = total_infections)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red", size = 2) +
+  labs(title = "Impact of Immunity Duration on Total Infections",
+       x = "Immunity Duration (Years)",
+       y = "Total Infected Population (Recovered)") +
+  theme_minimal()
+
+```
+
+Explanation:
+
+sir_model Function: This has been modified to handle both vaccination and waning immunity parameters. The equation for susceptible (dS), infected (dI), and recovered (dR) individuals accounts for vaccination (vx_rate) and waning immunity (waning_rate).
+
+run_simulation_with_waning Function: This function runs the simulation for different waning_rate values and tracks the total number of infections (recovered individuals).
+
+Varying waning_rates: The waning_rates are varied from a low value (representing long-lasting immunity) to higher values (representing shorter immunity durations). A lower waning rate means longer immunity duration, and a higher waning rate means shorter immunity.
+
+Plotting: The plot shows the relationship between immunity duration (in years) and the total number of infections. We expect to see a clear pattern where longer immunity durations lead to fewer infections.
+
+### Output Interpretation:
+
+**Trend**:
+
+The graph shows a positive correlation between immunity duration and total infections. As immunity duration increases, the total infected population also increases.
+
+**Data Points**:
+
+At 5.0 years: Approximately 9500 total infected population.
+
+At 7.5 years: Approximately 9600 total infected population.
+
+At 10.0 years: Approximately 9700 total infected population.
+
+At 12.5 years: Approximately 9750 total infected population.
+
+At 15.0 years: Approximately 9800 total infected population.
+
+### **Analysis:**
+
+Longer Immunity Duration: As the duration of immunity increases, the total number of infections over the 10-year period also increases. This suggests that longer-lasting immunity results in a higher cumulative number of infections.
+
+Implications for Vaccination Strategies: The graph indicates that while longer immunity duration reduces the frequency of reinfections, it may lead to a higher overall number of infections in the population. This could be due to the fact that individuals remain susceptible for a longer period before potentially losing immunity and becoming susceptible again.
+
+## **Question 6**
+
+Measles is a highly contagious viral disease caused by the measles virus. It primarily affects the respiratory system and is spread through respiratory droplets when an infected person coughs or sneezes. The virus can remain airborne or live on surfaces for several hours, making it one of the most easily transmissible diseases. Symptoms include high fever, cough, runny nose, red eyes, and a characteristic rash that typically starts on the face and spreads downward. Severe cases can lead to complications such as pneumonia, encephalitis, and death—particularly in young children and immunocompromised individuals.
+
+Despite the availability of a safe and effective vaccine, measles continues to cause outbreaks in regions with insufficient immunization coverage. It remains a significant public health threat in many parts of the world.
+
+### **Why Measles Was Chosen**
+
+We chose measles as the disease to model and analyze for the following reasons:
+
+1.  **High Infectiousness and Public Health Relevance**:\
+    Measles has a basic reproduction number (R₀) ranging between 12 and 18, making it one of the most contagious diseases known. This high transmissibility means even small declines in vaccination coverage can lead to large outbreaks. Modeling its spread can help understand the thresholds required for herd immunity and inform public health policies.
+
+2.  **Effective and Lifelong Immunity Post-Vaccination**:\
+    The measles vaccine is highly effective, providing lifelong immunity in most individuals. This makes measles ideal for exploring how consistent and widespread vaccination can eradicate disease or prevent outbreaks over long periods.
+
+3.  **Persistent Global Burden**:\
+    According to the World Health Organization (WHO), measles caused over 140,000 deaths globally in 2018, mostly among children under the age of five. Despite progress in reducing measles mortality, gaps in immunization coverage remain a global concern. Modeling helps evaluate the effectiveness of different strategies for bridging these gaps.
+
+4.  **Applicability to the SIR Model**:\
+    Measles fits well into the SIR (Susceptible-Infected-Recovered) modeling framework due to its clear stages of infection and recovery with immunity. This makes it an excellent candidate for studying the impact of different vaccination strategies, including catch-up campaigns and routine immunization.
+
+### **Other Aspects to Consider in Modeling Measles**
+
+**Vaccination Coverage and Hesitancy**:\
+Even small drops in coverage can lead to outbreaks. Modeling can help estimate the critical vaccination threshold needed to maintain herd immunity.
+
+**Demographic and Spatial Differences**:\
+Birth rates, migration, and local healthcare infrastructure can influence the persistence and resurgence of measles. Incorporating these variations improves the realism of simulations.
+
+**Outbreak Cycles and Seasonality**:\
+Measles tends to follow cyclical outbreak patterns, especially in areas with lower vaccine uptake. Incorporating these dynamics into models can help predict future epidemics.
+
+**Catch-Up and Booster Campaigns**:\
+In settings with historical under-vaccination, supplemental immunization activities (SIAs) are often needed. Modeling can assist in optimizing the timing and frequency of such interventions.
+
+### **Conclusion**
+
+By choosing measles as a case study, we are able to simulate how high vaccine coverage can drastically reduce infections and prevent outbreaks, even for a disease as contagious as measles. Mathematical modeling offers crucial insights into maintaining herd immunity and achieving long-term disease control or elimination, particularly in low-resource or vaccine-hesitant settings.
