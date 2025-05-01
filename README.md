@@ -1,0 +1,2 @@
+# Mathematical-Modelling-of-Vaccination-Strategies-for-Measles-Using-an-Extended-SIR-Framework
+This repository presents a mathematical and computational exploration of vaccination strategies for measles control using an extended SIR (Susceptible-Infectious-Recovered) model. The project integrates epidemiological theory with data-driven simulation to analyze the impact of different immunization strategies on disease transmission dynamics.
